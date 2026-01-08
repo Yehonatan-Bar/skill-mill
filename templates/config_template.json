@@ -1,0 +1,66 @@
+{
+  "project_root": ".",
+  "srptd_raw_dir": "srptd_raw",
+  "extractions_dir": "extractions",
+  "clusters_dir": "clusters",
+  "skills_output_dir": "skills_out",
+
+  "doc_cards_subdir": "doc_cards",
+  "buckets_subdir": "buckets",
+  "enriched_cards_subdir": "doc_cards_enriched",
+  "enriched_buckets_subdir": "buckets_enriched",
+  "incremental_clusters_subdir": "clusters_incremental",
+  "final_clusters_subdir": "clusters_final",
+  "representatives_subdir": "representatives",
+  "manifests_subdir": "manifests",
+
+  "model_for_enrichment": "claude-sonnet-4-20250514",
+  "model_for_clustering": "claude-sonnet-4-20250514",
+  "model_for_synthesis": "claude-opus-4-5-20251101",
+
+  "min_bucket_size_for_clustering": 1,
+  "max_clusters_per_prompt": 10,
+  "similarity_threshold": 0.25,
+  "min_cluster_size_for_audit": 10,
+
+  "domain_vocabulary": [
+    "data-analysis",
+    "data-processing",
+    "data-validation",
+    "pdf-processing",
+    "pdf-extraction",
+    "api-development",
+    "frontend",
+    "deployment",
+    "ai-integration",
+    "logging",
+    "monitoring"
+  ],
+
+  "pattern_vocabulary": [
+    "feature-implementation",
+    "bug-fix",
+    "refactor",
+    "optimization",
+    "integration",
+    "extraction",
+    "transformation",
+    "api-wrapper",
+    "ui-component",
+    "error-handling",
+    "report-generation"
+  ],
+
+  "domain_rollups": {
+    "pdf-processing": ["pdf-processing", "pdf-extraction", "document-processing"],
+    "data-analysis": ["data-analysis", "data-processing", "data-validation", "excel"],
+    "frontend": ["frontend", "ui", "dashboard", "html-generation"],
+    "api-development": ["api-development", "backend", "fastapi"],
+    "deployment": ["deployment", "infrastructure", "devops"],
+    "ai-integration": ["ai-integration", "llm", "prompt-engineering"],
+    "monitoring": ["monitoring", "logging", "observability"]
+  },
+
+  "domain_affinity": {},
+  "pattern_affinity": {}
+}
