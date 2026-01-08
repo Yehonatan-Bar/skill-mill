@@ -2,250 +2,191 @@
 
 A pipeline for extracting reusable Claude Code Skills from SR-PTD (Skill-Ready Post-Task Documentation) files.
 
-## Overview
+---
 
-This toolkit implements a two-layer pipeline that converts task documentation into structured, reusable Skills:
+## IMPORTANT: Prerequisites
 
-- **Layer 1 (Deterministic)**: Parsing, extraction, normalization, and clustering - no AI required
-- **Layer 2 (AI-Assisted)**: Tag enrichment, cluster refinement, and skill synthesis
+Before running this toolkit, you MUST have:
+
+1. **Anthropic API Key** - Required for AI-powered phases (C.2, C.3, D)
+   - Get your key from: https://console.anthropic.com/
+   - The key looks like: `sk-ant-api03-...`
+   - Without this key, the pipeline will fail at AI phases
+
+2. **Python 3.10+** with the `anthropic` package:
+   ```bash
+   pip install anthropic
+   ```
+
+3. **SR-PTD Documentation Files** - Your task documentation in markdown format
+   - Must follow the SR-PTD format (sections A-J) or Quick Capture format
+   - See `docs/SR-PTD_DOCUMENTATION_GUIDE.md` for format details
+
+---
+
+## Quick Start (3 Steps)
+
+### 1. Setup
+```bash
+# Create a new project directory
+mkdir my_skills_project && cd my_skills_project
+
+# Run the setup script
+python /path/to/skills_from_docs_toolkit/setup_project.py .
+```
+
+### 2. Configure
+
+**CRITICAL: Set your API key in the `.env` file:**
+```bash
+# Open .env file and replace the placeholder with your real key
+ANTHROPIC_API_KEY=sk-ant-api03-YOUR-REAL-KEY-HERE
+```
+
+The `.env` file was created by setup_project.py. You MUST edit it with your actual Anthropic API key.
+
+**Then copy your documentation:**
+```bash
+# Copy your SR-PTD markdown files to the input folder
+cp /path/to/your/docs/*.md srptd_raw/
+```
+
+### 3. Run
+```bash
+python run_pipeline.py
+```
+
+**Done!** Your generated skills will be in `skills_out/`
+
+### Options
+```bash
+python run_pipeline.py                   # Full pipeline
+python run_pipeline.py --test            # Test mode (3 clusters only)
+python run_pipeline.py --dry-run         # Preview without API calls
+python run_pipeline.py --resume          # Resume from last checkpoint
+python run_pipeline.py --skip-synthesis  # Clustering only (no Phase D)
+```
+
+---
+
+## What This Does
+
+Converts task documentation into Claude Code Skills through a two-layer pipeline:
+
+```
+SR-PTD Docs  -->  JSON Extractions  -->  Clusters  -->  Claude Skills
+   (raw)           (structured)         (grouped)        (final)
+```
+
+**Layer 1 (Deterministic)**: Parsing, extraction, and clustering - no AI required
+**Layer 2 (AI-Assisted)**: Tag enrichment, semantic clustering, and skill synthesis
+
+---
 
 ## Pipeline Phases
 
-```
-Phase A: Setup
-    |
-    v
-Phase B: Layer 1 Extraction (layer1_extractor.py)
-    | - Parses SR-PTD markdown files
-    | - Outputs: extractions/<doc_id>.json
-    v
-Phase C.0-C.1: Doc Cards & Bucketing (phase_c_clustering.py)
-    | - Creates compact doc cards
-    | - Groups by domain/pattern
-    | - Outputs: clusters/doc_cards/, clusters/buckets/
-    v
-Phase C.2: AI Tag Enrichment (phase_c_tag_enrichment.py)  [Optional]
-    | - Fills missing domain/pattern tags using AI
-    | - Reduces "unknown" buckets
-    | - Outputs: clusters/doc_cards_enriched/, clusters/buckets_enriched/
-    v
-Phase C.3: Incremental Clustering (phase_c_incremental_clustering.py)
-    | - AI-assisted clustering within buckets
-    | - Outputs: clusters/clusters_incremental/
-    v
-Phase C.4: Cross-Bucket Merging (phase_c4_merge_clusters.py)
-    | - Consolidates fragmented clusters
-    | - Outputs: clusters/clusters_final/
-    v
-Phase C.4b: Purity Audit (phase_c4_purity_audit.py)  [Optional]
-    | - Checks large clusters for splits
-    v
-Phase C.5: Representative Selection (phase_c5_representatives.py)
-    | - Selects best docs for synthesis
-    | - Outputs: clusters/representatives/
-    v
-Sanity Check (sanity_check.py)
-    | - Validates data integrity
-    v
-Phase D: Skill Synthesis (phase_d_skill_synthesis.py)
-    | - Generates SKILL.md and supporting files
-    | - Outputs: skills_out/<skill_name>/
-```
+| Phase | Script | Description | AI? |
+|-------|--------|-------------|-----|
+| B | `layer1_extractor.py` | Parse SR-PTD to JSON | No |
+| C.0-C.1 | `phase_c_clustering.py` | Doc cards + coarse buckets | No |
+| C.2 | `phase_c_tag_enrichment.py` | Fill missing tags | Yes |
+| C.3 | `phase_c_incremental_clustering.py` | Semantic clustering | Yes |
+| C.4 | `phase_c4_merge_clusters.py` | Cross-bucket merging | No |
+| C.5 | `phase_c5_representatives.py` | Select best docs | No |
+| Sanity | `sanity_check.py` | Validate data | No |
+| D | `phase_d_skill_synthesis.py` | Generate skills | Yes |
 
-## Quick Start
-
-### 1. Setup
-
-```bash
-# Create project structure
-mkdir my_skills_project
-cd my_skills_project
-mkdir srptd_raw extractions clusters skills_out
-
-# Copy your SR-PTD markdown files to srptd_raw/
-cp /path/to/your/SR-PTD*.md srptd_raw/
-
-# Set API key
-export ANTHROPIC_API_KEY="your-key-here"
-```
-
-### 2. Run the Pipeline
-
-```bash
-# Phase B: Extract documents
-python scripts/layer1_extractor.py srptd_raw/ -o extractions/
-
-# Phase C.0-C.1: Create doc cards and buckets
-python scripts/phase_c_clustering.py
-
-# Phase C.2: Enrich missing tags (optional but recommended)
-python scripts/phase_c_tag_enrichment.py
-
-# Phase C.3: Incremental clustering
-python scripts/phase_c_incremental_clustering.py
-
-# Phase C.4: Merge clusters
-python scripts/phase_c4_merge_clusters.py
-
-# Phase C.5: Select representatives
-python scripts/phase_c5_representatives.py
-
-# Sanity check
-python scripts/sanity_check.py
-
-# Phase D: Generate skills
-python scripts/phase_d_skill_synthesis.py
-```
-
-### 3. Test Mode
-
-Start with a small subset to verify the pipeline works:
-
-```bash
-# Process just 3 clusters
-python scripts/phase_d_skill_synthesis.py --max-clusters 3
-
-# Dry run to preview without API calls
-python scripts/phase_d_skill_synthesis.py --dry-run
-```
-
-## Usage for New Users
-
-If you're starting fresh with your own documentation, follow these steps:
-
-### Step 1: Copy the Toolkit
-
-```bash
-# Copy the toolkit to your project location
-cp -r skills_from_docs_toolkit/ /path/to/my_skills_project/
-cd /path/to/my_skills_project/
-```
-
-### Step 2: Configure for Your Domain
-
-```bash
-# Copy the configuration template
-cp templates/config_template.json config.json
-```
-
-Edit `config.json` to customize:
-- **domain_vocabulary**: Add domains relevant to your work (e.g., "web-scraping", "database-admin", "devops")
-- **pattern_vocabulary**: Add patterns you commonly use (e.g., "migration", "automation", "api-wrapper")
-- **domain_rollups**: Group related domains for better clustering
-
-### Step 3: Prepare Your Documentation
-
-```bash
-# Create required directories
-mkdir -p srptd_raw extractions clusters skills_out
-
-# Copy your SR-PTD markdown files
-cp /path/to/your/documentation/*.md srptd_raw/
-```
-
-Your documentation should follow the SR-PTD format (see `docs/SR-PTD_DOCUMENTATION_GUIDE.md`).
-
-### Step 4: Set Your API Key
-
-```bash
-# Option 1: Environment variable
-export ANTHROPIC_API_KEY="sk-ant-your-key-here"
-
-# Option 2: Create .env file
-echo 'ANTHROPIC_API_KEY=sk-ant-your-key-here' > .env
-```
-
-### Step 5: Run the Full Pipeline
-
-```bash
-# Phase B: Extract structured data from your docs
-python scripts/layer1_extractor.py srptd_raw/ -o extractions/
-
-# Phase C.0-C.1: Create doc cards and initial buckets
-python scripts/phase_c_clustering.py
-
-# Phase C.2: Fill missing tags with AI (recommended)
-python scripts/phase_c_tag_enrichment.py
-
-# Phase C.3: Cluster documents within buckets
-python scripts/phase_c_incremental_clustering.py
-
-# Phase C.4: Merge related clusters across buckets
-python scripts/phase_c4_merge_clusters.py
-
-# Phase C.5: Select representative docs for each cluster
-python scripts/phase_c5_representatives.py
-
-# Validate before synthesis
-python scripts/sanity_check.py
-
-# Phase D: Generate skills (start with test mode)
-python scripts/phase_d_skill_synthesis.py --max-clusters 3
-
-# If successful, run full synthesis
-python scripts/phase_d_skill_synthesis.py
-```
-
-### Step 6: Review Generated Skills
-
-Your skills will be in `skills_out/`. Each skill folder contains:
-- `SKILL.md` - Main skill documentation
-- `references/` - Background knowledge
-- `scripts/` - Reusable code
-- `assets/` - Templates and configs
-- `traceability.json` - Links back to source documents
+---
 
 ## Directory Structure
 
 ```
 my_skills_project/
-+-- srptd_raw/               # Input: Your SR-PTD markdown files
-+-- extractions/             # Phase B output: JSON extractions
-+-- clusters/
-|   +-- doc_cards/           # C.0: Compact document cards
-|   +-- buckets/             # C.1: Coarse buckets
-|   +-- doc_cards_enriched/  # C.2: Enriched cards (optional)
-|   +-- buckets_enriched/    # C.2: Enriched buckets
-|   +-- clusters_incremental/# C.3: Within-bucket clusters
-|   +-- clusters_final/      # C.4: Final merged clusters
-|   +-- representatives/     # C.5: Selected representatives
-+-- skills_out/              # Phase D output: Generated skills
-|   +-- skill-name/
-|       +-- SKILL.md
-|       +-- references/
-|       +-- scripts/
-|       +-- assets/
-|       +-- traceability.json
-+-- config.json              # Optional configuration
+|-- srptd_raw/              # Input: Your SR-PTD markdown files
+|-- extractions/            # Phase B: JSON extractions
+|-- clusters/
+|   |-- doc_cards/          # C.0: Compact summaries
+|   |-- buckets/            # C.1: Domain/pattern groups
+|   |-- buckets_enriched/   # C.2: With filled tags
+|   |-- clusters_incremental/  # C.3: Semantic clusters
+|   |-- clusters_final/     # C.4: Merged clusters
+|   |-- representatives/    # C.5: Selected docs
+|-- skills_out/             # Phase D: Generated skills
+|   |-- skill-name/
+|       |-- SKILL.md
+|       |-- references/
+|       |-- scripts/
+|       |-- assets/
+|       |-- traceability.json
+|-- .env                    # API key
+|-- config.json             # Optional customization
+|-- run_pipeline.py         # One-click runner
 ```
 
-## Configuration
+---
 
-Create a `config.json` file to customize paths and vocabularies:
+## Configuration (Optional)
+
+Edit `config.json` to customize for your domain:
 
 ```json
 {
-  "project_root": ".",
-  "srptd_raw_dir": "srptd_raw",
-  "extractions_dir": "extractions",
-  "clusters_dir": "clusters",
-  "skills_output_dir": "skills_out",
-
-  "model_for_enrichment": "claude-sonnet-4-20250514",
-  "model_for_clustering": "claude-sonnet-4-20250514",
-  "model_for_synthesis": "claude-opus-4-5-20251101",
-
   "domain_vocabulary": [
-    "your-domain-1",
-    "your-domain-2"
+    "web-development",
+    "data-processing",
+    "api-integration"
   ],
-
+  "pattern_vocabulary": [
+    "implementation",
+    "debugging",
+    "migration"
+  ],
   "domain_rollups": {
-    "domain-group-1": ["domain-1", "domain-1-variant"],
-    "domain-group-2": ["domain-2", "domain-2-variant"]
+    "development": ["web-development", "backend", "frontend"],
+    "data": ["data-processing", "etl", "analytics"]
   }
 }
 ```
+
+---
+
+## SR-PTD Document Format
+
+The toolkit expects markdown files with sections A-J:
+
+| Section | Content |
+|---------|---------|
+| A | Trigger Profile - what initiated the task |
+| B | Context & Inputs - environment, constraints |
+| C | Workflow - step-by-step process |
+| D | Knowledge Accessed |
+| E | Code Written |
+| F | Outputs Produced |
+| G | Issues & Fixes |
+| H | Verification |
+| I | Skill Assessment (reusability scores) |
+| J | Tags (domains, patterns, languages) |
+
+Also supports: Quick Capture format, Legacy task_doc format
+
+See `docs/SR-PTD_DOCUMENTATION_GUIDE.md` for detailed format guide.
+
+---
+
+## Output: Skill Structure
+
+Each generated skill contains:
+
+```
+skill-name/
+|-- SKILL.md              # Main documentation (triggers, workflow)
+|-- references/           # Deep knowledge, troubleshooting
+|-- scripts/              # Reusable code templates
+|-- assets/               # Config files, test data
+|-- traceability.json     # Links to source SR-PTD documents
+```
+
+---
 
 ## Requirements
 
@@ -253,80 +194,98 @@ Create a `config.json` file to customize paths and vocabularies:
 pip install anthropic
 ```
 
-## SR-PTD Document Format
-
-The toolkit expects SR-PTD markdown files with sections A-J:
-
-- **Section A**: Trigger Profile (what initiated the task)
-- **Section B**: Context & Inputs (environment, constraints)
-- **Section C**: Workflow (step-by-step process)
-- **Section D**: Knowledge Accessed
-- **Section E**: Code Written
-- **Section F**: Outputs Produced
-- **Section G**: Issues & Fixes
-- **Section H**: Verification
-- **Section I**: Skill Assessment
-- **Section J**: Tags
-
-Also supports:
-- Quick Capture format (simplified)
-- Legacy task_doc format
-
-## Output: Skill Structure
-
-Each generated skill includes:
-
-```
-skill-name/
-+-- SKILL.md              # Main skill documentation
-+-- references/           # Background knowledge, constraints
-+-- scripts/              # Reusable code patterns
-+-- assets/               # Templates, configs
-+-- traceability.json     # Links to source documents
-```
-
-## Customization
-
-### Domain Vocabularies
-
-Customize domain and pattern vocabularies in `phase_c_tag_enrichment.py`:
-
-```python
-DEFAULT_DOMAIN_VOCABULARY = [
-    "your-domain-1",
-    "your-domain-2",
-    # Add your specific domains
-]
-```
-
-### Domain Rollups
-
-Customize how domains are grouped in `phase_c4_merge_clusters.py`:
-
-```python
-DEFAULT_DOMAIN_ROLLUPS = {
-    "your-domain-group": ["domain-1", "domain-2", "domain-3"],
-}
-```
+---
 
 ## Troubleshooting
 
-### Too Many Unknown Buckets
+| Problem | Solution |
+|---------|----------|
+| Too many "unknown" buckets | Run Phase C.2 (tag enrichment) |
+| Clusters too fragmented | Check domain_rollups in config.json |
+| Clusters too large | Run `phase_c4_purity_audit.py` |
+| Phase D fails | Run `sanity_check.py` first |
+| API errors | Check .env file has valid ANTHROPIC_API_KEY |
 
-Run Phase C.2 (tag enrichment) to fill missing tags.
+---
 
-### Clusters Too Fragmented
+## Running Individual Phases
 
-Run Phase C.4 with `--rollup-first` for aggressive merging.
+For manual control, run phases separately:
 
-### Clusters Too Large
+```bash
+# Phase B: Extract
+python scripts/layer1_extractor.py srptd_raw/ -o extractions/
 
-Run Phase C.4b (purity audit) to identify splits.
+# Phase C.0-C.1: Doc cards and buckets
+python scripts/phase_c_clustering.py
 
-### Phase D Fails
+# Phase C.2: Tag enrichment
+python scripts/phase_c_tag_enrichment.py
 
-Run `sanity_check.py` to identify missing data.
+# Phase C.3: Clustering
+python scripts/phase_c_incremental_clustering.py
+
+# Phase C.4: Merge
+python scripts/phase_c4_merge_clusters.py
+
+# Phase C.5: Representatives
+python scripts/phase_c5_representatives.py
+
+# Sanity check
+python scripts/sanity_check.py
+
+# Phase D: Synthesis
+python scripts/phase_d_skill_synthesis.py
+```
+
+---
+
+## Documentation
+
+- `docs/Skills_Extraction_Process.md` - Process overview
+- `docs/SR-PTD_DOCUMENTATION_GUIDE.md` - Input format guide
+- `docs/Pipeline_Runbook.md` - Detailed methodology
+
+---
+
+## For Claude Code: Helping Users Run This Toolkit
+
+When a user asks you to help them run this toolkit, follow these steps:
+
+### Step 1: Check Prerequisites
+Ask the user:
+1. "Do you have an Anthropic API key? You'll need one from https://console.anthropic.com/"
+2. "Do you have SR-PTD documentation files ready?"
+
+### Step 2: Setup Project
+Run:
+```bash
+python /path/to/skills_from_docs_toolkit/setup_project.py /path/to/user/project
+```
+
+### Step 3: Remind User to Set API Key
+Tell the user:
+"Please edit the `.env` file in your project folder and add your Anthropic API key:
+`ANTHROPIC_API_KEY=sk-ant-api03-YOUR-KEY-HERE`"
+
+**Do NOT proceed until the user confirms they have set their API key.**
+
+### Step 4: Copy User's Documentation
+Help the user copy their SR-PTD files to `srptd_raw/` folder.
+
+### Step 5: Run Pipeline
+```bash
+cd /path/to/user/project
+python run_pipeline.py --test  # Start with test mode
+```
+
+### Common Issues to Watch For
+- **"No API key found"** - User forgot to edit .env file
+- **"No markdown files found"** - User didn't copy files to srptd_raw/
+- **Phase fails** - Use `--resume` to continue from last checkpoint
+
+---
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License
